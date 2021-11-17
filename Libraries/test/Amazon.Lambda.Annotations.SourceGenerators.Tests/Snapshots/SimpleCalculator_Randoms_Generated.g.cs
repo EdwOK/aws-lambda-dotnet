@@ -1,6 +1,9 @@
 ﻿using System;
 using System.Linq;
 using System.Collections.Generic;
+using System.Text;
+using System.Reflection;
+using Amazon.Lambda.Annotations;
 using Microsoft.Extensions.DependencyInjection;
 using Amazon.Lambda.Core;
 
@@ -12,6 +15,7 @@ namespace TestServerlessApp
 
         public SimpleCalculator_Randoms_Generated()
         {
+            SetExecutionEnvironment();
             var services = new ServiceCollection();
 
             // By default, Lambda function class is added to the service container using the singleton lifetime
@@ -31,6 +35,29 @@ namespace TestServerlessApp
             var simpleCalculator = scope.ServiceProvider.GetRequiredService<SimpleCalculator>();
 
             return simpleCalculator.Randoms(input, context);
+        }
+
+        private static void SetExecutionEnvironment()
+        {
+            const string envName = "AWS_EXECUTION_ENV";
+            const string amazonLambdaAnnotations = "amazon-lambda-annotations";
+
+            var assemblyVersion = typeof(LambdaFunctionAttribute).Assembly
+                .GetCustomAttributes(typeof(AssemblyInformationalVersionAttribute), false)
+                .FirstOrDefault()
+                as AssemblyInformationalVersionAttribute;
+
+            var envValue = new StringBuilder();
+
+            // If there is an existing execution environment variable add the annotations package as a suffix.
+            if(!string.IsNullOrEmpty(Environment.GetEnvironmentVariable(envName)))
+            {
+                envValue.Append($"{Environment.GetEnvironmentVariable(envName)}_");
+            }
+
+            envValue.Append($"{amazonLambdaAnnotations}_{assemblyVersion?.InformationalVersion}");
+
+            Environment.SetEnvironmentVariable(envName, envValue.ToString());
         }
     }
 }
