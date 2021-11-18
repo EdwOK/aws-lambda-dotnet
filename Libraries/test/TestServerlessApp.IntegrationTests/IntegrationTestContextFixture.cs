@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Amazon.CloudFormation;
 using Amazon.CloudWatchLogs;
@@ -30,6 +32,8 @@ namespace TestServerlessApp.IntegrationTests
 
         public IntegrationTestContextFixture()
         {
+            DeployTestServerlessApp().GetAwaiter().GetResult();
+
             _stackName = GetStackName();
             _bucketName = GetBucketName();
             Assert.False(string.IsNullOrEmpty(_stackName));
@@ -49,6 +53,43 @@ namespace TestServerlessApp.IntegrationTests
             Assert.Equal(11, LambdaFunctions.Count);
             Assert.False(string.IsNullOrEmpty(RestApiUrlPrefix));
             Assert.False(string.IsNullOrEmpty(RestApiUrlPrefix));
+        }
+
+        private async Task DeployTestServerlessApp()
+        {
+            var scriptPath = Path.Combine("..", "..", "..", "DeploymentScript.ps1");
+            var command = $"pwsh {scriptPath}";
+            var processStartInfo = new ProcessStartInfo
+            {
+                FileName = "pwsh",
+                Arguments = scriptPath,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            var process = Process.Start(processStartInfo);
+            if (null == process)
+                throw new Exception("Process.Start failed to return a non-null process");
+
+            process.OutputDataReceived += (sender, e) => Console.WriteLine(e.Data);
+            process.ErrorDataReceived += (sender, e) => Console.WriteLine(e.Data);
+
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+
+            while (true)
+            {
+                if (process.HasExited)
+                {
+                    // In some cases, process might have exited but OutputDataReceived or ErrorDataReceived could still be writing
+                    // asynchronously, adding a delay should cover most of the cases.
+                    await Task.Delay(TimeSpan.FromSeconds(1), default);
+                    break;
+                }
+
+                await Task.Delay(TimeSpan.FromMilliseconds(50), default);
+            }
         }
 
         private string GetStackName()
